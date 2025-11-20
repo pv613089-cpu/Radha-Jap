@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="hi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Naam Jap Counter</title>
+<style>
+  :root{--bg:#f7f7fb;--card:#fff;--accent:#6b2b7f;--muted:#666}
+  body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,'Noto Sans',sans-serif;background:var(--bg);display:flex;align-items:center;justify-content:center;height:100vh;padding:20px}
+  .card{width:100%;max-width:420px;background:var(--card);border-radius:16px;box-shadow:0 8px 30px rgba(20,20,40,.08);padding:20px;text-align:center}
+  h1{margin:0;font-size:20px;color:var(--accent)}
+  .nameRow{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:12px}
+  input[name="name"]{font-size:18px;padding:8px;border-radius:8px;border:1px solid #e6e6ee;text-align:center;min-width:140px}
+  .count{font-size:64px;margin:18px 0;color:#222;font-weight:600}
+  .btnBig{display:inline-block;padding:18px 26px;border-radius:14px;background:var(--accent);color:#fff;font-weight:700;font-size:18px;user-select:none}
+  .controls{display:flex;gap:8px;justify-content:center;margin-top:14px;flex-wrap:wrap}
+  .small{padding:8px 12px;border-radius:10px;background:#efeff8;border:none;color:var(--accent);font-weight:600;cursor:pointer}
+  .muted{color:var(--muted);font-size:13px;margin-top:10px}
+  .top-row{display:flex;justify-content:space-between;align-items:center}
+  .info{font-size:12px;color:var(--muted)}
+  @media (max-width:420px){ .count{font-size:48px} .btnBig{padding:14px 20px} input[name="name"]{min-width:110px} }
+</style>
+</head>
+<body>
+  <div class="card" role="application" aria-label="Naam Jap Counter">
+    <div class="top-row">
+      <h1 id="title">Naam Jap</h1>
+      <div class="info">Auto save</div>
+    </div>
+
+    <div class="nameRow">
+      <label for="name" class="sr-only">Naam</label>
+      <input id="name" name="name" type="text" placeholder="Radha" value="Radha" />
+    </div>
+
+    <div id="count" class="count" aria-live="polite">0</div>
+
+    <div>
+      <button id="tapBtn" class="btnBig" aria-label="Tap to count">JAP KARO</button>
+    </div>
+
+    <div class="controls">
+      <button id="undo" class="small" title="Undo last">Undo</button>
+      <button id="reset" class="small" title="Reset counter">Reset</button>
+      <button id="setGoal" class="small" title="Set goal">Set Goal</button>
+      <button id="share" class="small" title="Share">Share</button>
+    </div>
+
+    <div id="goalRow" style="display:none;margin-top:10px">
+      <input id="goalInput" type="number" placeholder="Goal (e.g., 108)" style="padding:8px;border-radius:8px;border:1px solid #e6e6ee;width:120px" />
+      <button id="applyGoal" class="small">Apply</button>
+      <div id="goalInfo" class="muted"></div>
+    </div>
+
+    <div id="note" class="muted">Long-press JAP button for continuous counting.</div>
+  </div>
+
+<script>
+(function(){
+  const countEl = document.getElementById('count');
+  const tapBtn = document.getElementById('tapBtn');
+  const undoBtn = document.getElementById('undo');
+  const resetBtn = document.getElementById('reset');
+  const nameInput = document.getElementById('name');
+  const shareBtn = document.getElementById('share');
+  const setGoalBtn = document.getElementById('setGoal');
+  const goalRow = document.getElementById('goalRow');
+  const goalInput = document.getElementById('goalInput');
+  const applyGoal = document.getElementById('applyGoal');
+  const goalInfo = document.getElementById('goalInfo');
+
+  // State
+  let count = 0;
+  let history = [];
+  let holdInterval = null;
+  let goal = null;
+
+  // Load from localStorage
+  try {
+    const s = JSON.parse(localStorage.getItem('radha_jap_v1') || '{}');
+    if (s.count != null) count = s.count;
+    if (s.name) nameInput.value = s.name;
+    if (s.goal) { goal = s.goal; goalInfo.textContent = 'Goal: ' + goal; goalRow.style.display = 'block'; }
+  } catch(e){ /* ignore */ }
+  render();
+
+  function save(){
+    localStorage.setItem('radha_jap_v1', JSON.stringify({count, name: nameInput.value, goal}));
+  }
+
+  function render(){
+    countEl.textContent = count;
+    if (goal) {
+      goalInfo.textContent = 'Goal: ' + goal + ' • Remaining: ' + Math.max(0, goal - count);
+      goalRow.style.display = 'block';
+    } else {
+      goalInfo.textContent = '';
+    }
+  }
+
+  function inc(by=1){
+    history.push(count);
+    count += by;
+    render();
+    save();
+    // simple feedback
+    tapBtn.animate([{transform:'scale(1)'},{transform:'scale(.98)'}],{duration:80,fill:'forwards'});
+  }
+
+  function undo(){
+    if (history.length){
+      count = history.pop();
+      render();
+      save();
+    } else {
+      // nothing
+    }
+  }
+
+  function reset(){
+    history.push(count);
+    count = 0;
+    render();
+    save();
+  }
+
+  // Single tap and long press handling (works on mobile + desktop)
+  let pointerDownAt = 0;
+  function startHold(){
+    if (holdInterval) return;
+    holdInterval = setInterval(()=> inc(1), 150); // continuous speed
+  }
+  function stopHold(){
+    if (holdInterval) { clearInterval(holdInterval); holdInterval = null; }
+  }
+
+  // Pointer events for compatibility
+  tapBtn.addEventListener('pointerdown', (e)=>{
+    pointerDownAt = Date.now();
+    // small immediate increment for tap feel; if user holds, continuous will add more
+    inc(1);
+    // start hold after short delay
+    setTimeout(() => {
+      if (Date.now() - pointerDownAt >= 300) startHold();
+    }, 300);
+    e.target.setPointerCapture(e.pointerId);
+  });
+  tapBtn.addEventListener('pointerup', (e)=>{
+    pointerDownAt = 0;
+    stopHold();
+    try { e.target.releasePointerCapture(e.pointerId); } catch(e){}
+  });
+  tapBtn.addEventListener('pointercancel', stopHold);
+  // keyboard support
+  tapBtn.addEventListener('keydown', (ev)=> { if(ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); inc(1); } });
+
+  undoBtn.addEventListener('click', undo);
+  resetBtn.addEventListener('click', ()=> {
+    if (confirm('Reset counter to 0?')) reset();
+  });
+
+  nameInput.addEventListener('input', save);
+
+  // Share (web share if available)
+  shareBtn.addEventListener('click', ()=>{
+    const txt = `${nameInput.value || 'Naam'} jap: ${count} times.`;
+    if (navigator.share) {
+      navigator.share({title:'Naam Jap', text:txt}).catch(()=>{});
+    } else {
+      prompt('Copy this text to share:', txt);
+    }
+  });
+
+  setGoalBtn.addEventListener('click', ()=> {
+    goalRow.style.display = goalRow.style.display === 'block' ? 'none' : 'block';
+  });
+  applyGoal.addEventListener('click', ()=> {
+    const v = parseInt(goalInput.value);
+    if (!isNaN(v) && v > 0) { goal = v; goalInfo.textContent = 'Goal: ' + goal + ' • Remaining: ' + Math.max(0, goal - count); save(); }
+  });
+
+  // minor accessibility: announce when goal reached
+  const observer = new MutationObserver(()=> {
+    if (goal && count >= goal) {
+      const a = document.createElement('div'); a.setAttribute('role','status'); a.style.position='absolute'; a.style.left='-9999px';
+      a.textContent = `Congratulations — goal ${goal} reached!`;
+      document.body.appendChild(a);
+      setTimeout(()=> a.remove(),2000);
+    }
+  });
+  observer.observe(countEl, {childList:true,subtree:true});
+
+})();
+</script>
+</body>
+</html>
